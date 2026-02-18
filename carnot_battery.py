@@ -36,7 +36,7 @@ class Config:
     """Configuration for Carnot Battery simulation"""
     
     # Working fluids
-    WORKING_FLUID = "HEOS::R1233zd(E)"
+    WORKING_FLUID = "HEOS::n-Butane"
     STORAGE_FLUID = "Water"
     
     # Nominal temperatures [°C] (for single-point tests)
@@ -114,6 +114,13 @@ class CarnotBattery:
         # Store pressure ratios for output
         self.PR_HP = np.nan
         self.PR_ORC = np.nan
+        # Per-kg energy terms (J/kg)
+        self.q_cond_per_kg = np.nan
+        self.w_comp_per_kg = np.nan
+        self.q_evap_per_kg = np.nan
+        self.w_pump_per_kg = np.nan
+        self.w_exp_per_kg = np.nan
+        self.w_net_per_kg = np.nan
     
     def calc_hp_cycle(self) -> Tuple[float, float]:
         """
@@ -151,6 +158,10 @@ class CarnotBattery:
         
         # Store pressure ratio
         self.PR_HP = P2 / P1
+
+        # Store per-kg energy terms (J/kg)
+        self.q_cond_per_kg = q_cond
+        self.w_comp_per_kg = w_comp
         
         return COP, self.PR_HP
     
@@ -206,8 +217,57 @@ class CarnotBattery:
         
         # Store pressure ratio
         self.PR_ORC = P2 / P1
+
+        # Store per-kg energy terms (J/kg)
+        self.q_evap_per_kg = q_evap
+        self.w_pump_per_kg = w_pump
+        self.w_exp_per_kg = w_exp
+        self.w_net_per_kg = w_net
         
         return eta_ORC, self.PR_ORC
+
+    def compute_mass_flow(self, Q_dot_cond: Optional[float] = None, W_dot_net: Optional[float] = None) -> Tuple[Optional[float], Optional[float]]:
+        """
+        Estimate mass flow rates from requested power values.
+
+        Args:
+            Q_dot_cond: thermal power at the condenser side [W] (optional)
+            W_dot_net: net mechanical/electrical power from ORC [W] (optional)
+
+        Returns:
+            (m_dot_cond, m_dot_orc) in kg/s (None if not computable or not requested)
+
+        Notes:
+            - This method relies on per-kg energy terms computed by
+              `calc_hp_cycle()` and `calc_orc_cycle()` (or by calling
+              `compute_rte()` beforehand). Enthalpy differences are in J/kg,
+              so dividing a power (W = J/s) by J/kg yields kg/s.
+        """
+        # Ensure per-kg terms are computed
+        try:
+            if np.isnan(self.q_cond_per_kg) or np.isnan(self.w_net_per_kg):
+                # Attempt to compute cycles to populate per-kg values
+                self.calc_hp_cycle()
+                self.calc_orc_cycle()
+        except Exception:
+            pass
+
+        m_dot_cond = None
+        m_dot_orc = None
+
+        if Q_dot_cond is not None:
+            if np.isfinite(self.q_cond_per_kg) and abs(self.q_cond_per_kg) > 1e-12:
+                m_dot_cond = Q_dot_cond / self.q_cond_per_kg
+            else:
+                m_dot_cond = None
+
+        if W_dot_net is not None:
+            if np.isfinite(self.w_net_per_kg) and abs(self.w_net_per_kg) > 1e-12:
+                m_dot_orc = W_dot_net / self.w_net_per_kg
+            else:
+                m_dot_orc = None
+
+        return m_dot_cond, m_dot_orc
     
     def compute_rte(self) -> Tuple[float, float, float, float, float]:
         """
