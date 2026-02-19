@@ -69,6 +69,8 @@ class Config:
     EXCEL_FILENAME = "sensitivity_results.xlsx"
     PLOT_FILENAME = "3D_sensitivity.png"
     FIGURE_DPI = 120
+    # Control automatic saving of generated figures (set False to disable)
+    SAVE_PLOTS = False
 
 
 # ==============================================================================
@@ -418,9 +420,11 @@ def plot_3d_cop_hp(df: pd.DataFrame, config: Config):
     plt.suptitle('Heat Pump COP\n(independent of T_cold and T_amb)',
                  fontsize=13, fontweight='bold', y=0.98)
     plt.tight_layout()
-    plt.savefig('3D_COP_HP.png', dpi=config.FIGURE_DPI, bbox_inches='tight')
-
-    print("✓ 3D COP plot saved to: 3D_COP_HP.png")
+    if config.SAVE_PLOTS:
+        plt.savefig('3D_COP_HP.png', dpi=config.FIGURE_DPI, bbox_inches='tight')
+        print("✓ 3D COP plot saved to: 3D_COP_HP.png")
+    else:
+        print("(Saving of 3D COP plot disabled)")
     print(f"{'='*70}\n")
     plt.show()
 
@@ -471,9 +475,11 @@ def plot_3d_eta_orc(df: pd.DataFrame, config: Config):
     plt.suptitle('ORC Efficiency\n(independent of T_source)',
                  fontsize=13, fontweight='bold', y=0.98)
     plt.tight_layout()
-    plt.savefig('3D_Eta_ORC.png', dpi=config.FIGURE_DPI, bbox_inches='tight')
-
-    print("✓ 3D ORC efficiency plot saved to: 3D_Eta_ORC.png")
+    if config.SAVE_PLOTS:
+        plt.savefig('3D_Eta_ORC.png', dpi=config.FIGURE_DPI, bbox_inches='tight')
+        print("✓ 3D ORC efficiency plot saved to: 3D_Eta_ORC.png")
+    else:
+        print("(Saving of 3D ORC efficiency plot disabled)")
     print(f"{'='*70}\n")
     plt.show()
 
@@ -546,11 +552,12 @@ def plot_3d_results(df: pd.DataFrame, config: Config):
                  fontsize=14, fontweight='bold', y=0.98)
     
     plt.tight_layout()
-    plt.savefig(config.PLOT_FILENAME, dpi=config.FIGURE_DPI, bbox_inches='tight')
-    
-    print(f"✓ 3D plots saved to: {config.PLOT_FILENAME}")
+    if config.SAVE_PLOTS:
+        plt.savefig(config.PLOT_FILENAME, dpi=config.FIGURE_DPI, bbox_inches='tight')
+        print(f"✓ 3D plots saved to: {config.PLOT_FILENAME}")
+    else:
+        print("(Saving of 3D results plot disabled)")
     print(f"{'='*70}\n")
-    
     plt.show()
 
 

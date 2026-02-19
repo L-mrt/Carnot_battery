@@ -69,6 +69,8 @@ class Config:
     EXCEL_FILENAME = "sensitivity_results.xlsx"
     PLOT_FILENAME = "3D_sensitivity.png"
     FIGURE_DPI = 120
+    # Control automatic saving of generated figures (set False to disable)
+    SAVE_PLOTS = False
 
 
 # ==============================================================================
@@ -454,9 +456,11 @@ def plot_3d_results(df: pd.DataFrame, config: Config):
                  fontsize=14, fontweight='bold', y=0.98)
     
     plt.tight_layout()
-    plt.savefig(config.PLOT_FILENAME, dpi=config.FIGURE_DPI, bbox_inches='tight')
-    
-    print(f"✓ 3D plots saved to: {config.PLOT_FILENAME}")
+    if config.SAVE_PLOTS:
+        plt.savefig(config.PLOT_FILENAME, dpi=config.FIGURE_DPI, bbox_inches='tight')
+        print(f"✓ 3D plots saved to: {config.PLOT_FILENAME}")
+    else:
+        print("(Saving of 3D results plot disabled)")
     print(f"{'='*70}\n")
     
     plt.show()
