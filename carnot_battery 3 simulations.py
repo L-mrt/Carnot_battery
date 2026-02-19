@@ -431,13 +431,13 @@ def plot_3d_cop_hp(df: pd.DataFrame, config: Config):
 
 def plot_3d_eta_orc(df: pd.DataFrame, config: Config):
     """
-    3D plot of ORC efficiency.
+    2D plot of ORC efficiency.
     η_ORC depends on T_hot, T_cold, T_amb — NOT on T_source.
-    X=T_hot, Y=T_amb, Z=η_ORC [%], color=T_cold — single subplot.
+    X=T_hot, Y=η_ORC [%], color=T_amb — single subplot.
     Points are deduplicated on (T_hot, T_cold, T_amb) before plotting.
     """
     print(f"{'='*70}")
-    print("3D VISUALIZATION - ORC Efficiency")
+    print("2D VISUALIZATION - ORC Efficiency")
     print(f"{'='*70}")
 
     # Deduplicate: η_ORC is identical for all T_source at the same (T_hot, T_cold, T_amb)
@@ -447,39 +447,48 @@ def plot_3d_eta_orc(df: pd.DataFrame, config: Config):
         .drop_duplicates(subset=['T_hot', 'T_cold', 'T_amb'])
     )
 
-    fig = plt.figure(figsize=(8, 6), dpi=config.FIGURE_DPI)
-    ax = fig.add_subplot(111, projection='3d')
+    T_amb_values = sorted(data['T_amb'].unique())
+    cmap = plt.get_cmap('coolwarm', len(T_amb_values))
+    norm = plt.Normalize(vmin=min(T_amb_values), vmax=max(T_amb_values))
 
-    sc = ax.scatter(
-        data['T_hot'],
-        data['T_amb'],
-        data['Eta_ORC'] * 100,
-        c=data['T_cold'],
-        cmap='viridis',
-        s=30,
-        alpha=0.8,
-        edgecolors='k',
-        linewidths=0.3
-    )
+    fig, ax = plt.subplots(figsize=(9, 6), dpi=config.FIGURE_DPI)
 
-    ax.set_xlabel('T_hot [°C]', fontsize=10, labelpad=8)
-    ax.set_ylabel('T_amb [°C]', fontsize=10, labelpad=8)
-    ax.set_zlabel('η_ORC [%]', fontsize=10, labelpad=8)
+    for T_amb_val in T_amb_values:
+        subset = data[data['T_amb'] == T_amb_val].sort_values('T_hot')
+        color = cmap(norm(T_amb_val))
+        ax.plot(
+            subset['T_hot'],
+            subset['Eta_ORC'] * 100,
+            color=color,
+            linewidth=1.2,
+            alpha=0.7
+        )
+        ax.scatter(
+            subset['T_hot'],
+            subset['Eta_ORC'] * 100,
+            color=color,
+            s=25,
+            alpha=0.85,
+            edgecolors='k',
+            linewidths=0.3
+        )
 
-    cbar = plt.colorbar(sc, ax=ax, pad=0.1, shrink=0.8)
-    cbar.set_label('T_cold [°C]', fontsize=9)
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    cbar = plt.colorbar(sm, ax=ax)
+    cbar.set_label('T_amb [°C]', fontsize=10)
 
+    ax.set_xlabel('T_hot [°C]', fontsize=11)
+    ax.set_ylabel('η_ORC [%]', fontsize=11)
+    ax.set_title('ORC Efficiency vs Hot Tank Temperature\n(independent of T_source)',
+                 fontsize=13, fontweight='bold')
     ax.grid(True, alpha=0.3)
-    ax.view_init(elev=20, azim=45)
-
-    plt.suptitle('ORC Efficiency\n(independent of T_source)',
-                 fontsize=13, fontweight='bold', y=0.98)
     plt.tight_layout()
     if config.SAVE_PLOTS:
-        plt.savefig('3D_Eta_ORC.png', dpi=config.FIGURE_DPI, bbox_inches='tight')
-        print("✓ 3D ORC efficiency plot saved to: 3D_Eta_ORC.png")
+        plt.savefig('2D_Eta_ORC.png', dpi=config.FIGURE_DPI, bbox_inches='tight')
+        print("✓ 2D ORC efficiency plot saved to: 2D_Eta_ORC.png")
     else:
-        print("(Saving of 3D ORC efficiency plot disabled)")
+        print("(Saving of 2D ORC efficiency plot disabled)")
     print(f"{'='*70}\n")
     plt.show()
 
