@@ -3,10 +3,10 @@ Carnot Battery Simulation (PTES) - Full Factorial Sensitivity Analysis
 Steady-state model with heat pump, thermal storage, and ORC cycle
 Based on Laterre et al., 2024
 
-Major updates:
-- Fixed T_cold dependency via preheater pinch constraint in ORC
-- Full 4D factorial sweep (T_hot, T_cold, T_amb, T_source)
-- 3D visualization with color-coded 4th dimension
+System description:
+- Heat Pump (charging)  : absorbs heat from T_source, rejects it at T_hot
+- ORC (discharging)     : takes heat from T_hot, rejects it at T_amb
+- Full 3D factorial sweep (T_hot, T_amb, T_source)
 - Pressure ratio tracking
 """
 
@@ -43,8 +43,7 @@ class Config:
     T_SOURCE_IN = 24.0
     T_SINK_IN = 15.0
     T_HOT_TANK = 150.0
-    T_COLD_TANK = 20.0
-    
+
     # Storage pressure [Pa]
     P_STORAGE = 7.5e5
     
@@ -60,7 +59,6 @@ class Config:
     
     # Full factorial sweep ranges (for main analysis)
     T_HOT_SWEEP = np.arange(90, 151, 10)        # [90, 100, ..., 150]
-    T_COLD_SWEEP = np.arange(20, 61, 5)         # [20, 25, ..., 60]
     # Sweep ambient from -10 to 40 °C in 5 °C steps
     T_AMB_SWEEP = np.arange(-10, 41, 5)
     T_SOURCE_SWEEP = np.array([24, 60])
@@ -70,30 +68,30 @@ class Config:
     PLOT_FILENAME = "3D_sensitivity.png"
     FIGURE_DPI = 120
     # Control automatic saving of generated figures (set False to disable)
-    SAVE_PLOTS = False
+    SAVE_PLOTS = True
 
 
 # ==============================================================================
-# Carnot Battery Model (with T_cold fix)
+# Carnot Battery Model
 # ==============================================================================
 
 class CarnotBattery:
     """
-    Complete thermodynamic model of a Carnot Battery
-    
-    Key fix: ORC preheater pinch constraint enforces T_cold dependency
+    Complete thermodynamic model of a Carnot Battery (PTES)
+
+    Heat Pump (charging) : T_source → T_hot
+    ORC (discharging)    : T_hot → T_amb
     """
     
-    def __init__(self, T_source: float, T_amb: float, T_hot: float, T_cold: float,
+    def __init__(self, T_source: float, T_amb: float, T_hot: float,
                  config: Config = None):
         """
         Initialize Carnot Battery with operating temperatures
         
         Args:
-            T_source: Waste heat source temperature [°C]
-            T_amb: Ambient sink temperature [°C]
+            T_source: Waste heat source temperature for HP evaporator [°C]
+            T_amb: Ambient sink temperature for ORC condenser [°C]
             T_hot: Hot tank temperature [°C]
-            T_cold: Cold tank temperature [°C]
             config: Configuration object
         """
         if config is None:
@@ -103,7 +101,6 @@ class CarnotBattery:
         self.T_source = T_source
         self.T_amb = T_amb
         self.T_hot = T_hot
-        self.T_cold = T_cold
         
         self.delta_T_pp = config.DELTA_T_PINCH
         self.superheat = config.SUPERHEAT
@@ -169,11 +166,11 @@ class CarnotBattery:
     
     def calc_orc_cycle(self) -> Tuple[float, float]:
         """
-        Calculate ORC cycle (discharging) WITH T_cold constraint
-        
-        Key fix: Preheater pinch constraint limits evaporator pressure
-        The saturation temperature at evaporator inlet must be <= T_cold - pinch
-        
+        Calculate ORC cycle (discharging)
+
+        Heat source : hot tank at T_hot
+        Heat sink   : ambient at T_amb
+
         Returns:
             (eta_ORC, pressure_ratio)
         """
@@ -285,7 +282,7 @@ class CarnotBattery:
 
 def run_full_factorial_sweep(config: Config = None) -> pd.DataFrame:
     """
-    Run full 4D factorial sweep
+    Run full 3D factorial sweep  (T_hot × T_amb × T_source)
     
     Returns:
         DataFrame with all combinations and results
@@ -296,7 +293,6 @@ def run_full_factorial_sweep(config: Config = None) -> pd.DataFrame:
     # Generate all combinations
     combinations = list(itertools.product(
         config.T_HOT_SWEEP,
-        config.T_COLD_SWEEP,
         config.T_AMB_SWEEP,
         config.T_SOURCE_SWEEP
     ))
@@ -307,7 +303,6 @@ def run_full_factorial_sweep(config: Config = None) -> pd.DataFrame:
     print(f"{'='*70}")
     print(f"Total combinations: {n_total}")
     print(f"  T_hot:    {len(config.T_HOT_SWEEP)} values")
-    print(f"  T_cold:   {len(config.T_COLD_SWEEP)} values")
     print(f"  T_amb:    {len(config.T_AMB_SWEEP)} values")
     print(f"  T_source: {len(config.T_SOURCE_SWEEP)} values")
     print(f"{'='*70}\n")
@@ -317,15 +312,12 @@ def run_full_factorial_sweep(config: Config = None) -> pd.DataFrame:
     # Use tqdm if available
     iterator = tqdm(combinations, desc="Computing") if HAS_TQDM else combinations
     
-    for T_hot, T_cold, T_amb, T_source in iterator:
-        # Keep all combinations so both T_source subplots have the same number of points.
-        # Invalid/physically impossible points will produce NaNs (handled downstream).
-        battery = CarnotBattery(T_source, T_amb, T_hot, T_cold, config)
+    for T_hot, T_amb, T_source in iterator:
+        battery = CarnotBattery(T_source, T_amb, T_hot, config)
         COP, eta_ORC, RTE, PR_HP, PR_ORC = battery.compute_rte()
 
         results.append({
             'T_hot': T_hot,
-            'T_cold': T_cold,
             'T_amb': T_amb,
             'T_source': T_source,
             'COP_HP': COP,
@@ -432,19 +424,19 @@ def plot_3d_cop_hp(df: pd.DataFrame, config: Config):
 def plot_3d_eta_orc(df: pd.DataFrame, config: Config):
     """
     2D plot of ORC efficiency.
-    η_ORC depends on T_hot, T_cold, T_amb — NOT on T_source.
+    η_ORC depends on T_hot and T_amb — NOT on T_source.
     X=T_hot, Y=η_ORC [%], color=T_amb — single subplot.
-    Points are deduplicated on (T_hot, T_cold, T_amb) before plotting.
+    Points are deduplicated on (T_hot, T_amb) before plotting.
     """
     print(f"{'='*70}")
     print("2D VISUALIZATION - ORC Efficiency")
     print(f"{'='*70}")
 
-    # Deduplicate: η_ORC is identical for all T_source at the same (T_hot, T_cold, T_amb)
+    # Deduplicate: η_ORC is identical for all T_source at the same (T_hot, T_amb)
     data = (
-        df[['T_hot', 'T_cold', 'T_amb', 'Eta_ORC']]
+        df[['T_hot', 'T_amb', 'Eta_ORC']]
         .dropna(subset=['Eta_ORC'])
-        .drop_duplicates(subset=['T_hot', 'T_cold', 'T_amb'])
+        .drop_duplicates(subset=['T_hot', 'T_amb'])
     )
 
     T_amb_values = sorted(data['T_amb'].unique())
@@ -496,10 +488,10 @@ def plot_3d_eta_orc(df: pd.DataFrame, config: Config):
 def plot_3d_results(df: pd.DataFrame, config: Config):
     """
     Generate 3D plots (one per T_source)
-    X=T_hot, Y=T_amb, Z=RTE, color=T_cold
+    X=T_hot, Y=T_amb, Z=RTE, color=RTE
     """
     print(f"{'='*70}")
-    print(f"3D VISUALIZATION")
+    print(f"3D VISUALIZATION - RTE")
     print(f"{'='*70}")
     
     T_source_values = sorted(df['T_source'].unique())
@@ -510,55 +502,40 @@ def plot_3d_results(df: pd.DataFrame, config: Config):
     for idx, T_src in enumerate(T_source_values):
         ax = fig.add_subplot(1, n_plots, idx+1, projection='3d')
         
-        # All attempted points for this T_source
+        # Valid, positive RTE points only
         data_all = df[df['T_source'] == T_src]
         data_valid = data_all.dropna(subset=['RTE'])
-        data_invalid = data_all[data_all['RTE'].isna()]
+        n_before = len(data_valid)
+        data_valid = data_valid[data_valid['RTE'] > 0]
+        n_omitted = n_before - len(data_valid)
+        if n_omitted > 0:
+            print(f"Note: {n_omitted} non-positive RTE points omitted for T_source={T_src}°C")
 
-        # Plot valid points (colored by T_cold)
         sc = ax.scatter(
             data_valid['T_hot'],
             data_valid['T_amb'],
-            data_valid['RTE'] * 100,  # Convert to percentage
-            c=data_valid['T_cold'],
-            cmap='coolwarm',
-            s=30,
-            alpha=0.8,
+            data_valid['RTE'] * 100,
+            c=data_valid['RTE'] * 100,
+            cmap='viridis',
+            s=35,
+            alpha=0.85,
             edgecolors='k',
             linewidths=0.3
         )
-
-        # Plot invalid points (show as gray crosses) so both subplots have equal point counts
-        if not data_invalid.empty:
-            ax.scatter(
-                data_invalid['T_hot'],
-                data_invalid['T_amb'],
-                np.zeros(len(data_invalid)),
-                c='lightgray',
-                marker='x',
-                s=25,
-                alpha=0.6,
-                label='invalid'
-            )
         
-        # Labels
         ax.set_xlabel('T_hot [°C]', fontsize=10, labelpad=8)
         ax.set_ylabel('T_amb [°C]', fontsize=10, labelpad=8)
         ax.set_zlabel('RTE [%]', fontsize=10, labelpad=8)
         ax.set_title(f'T_source = {T_src:.0f}°C', fontsize=12, fontweight='bold', pad=15)
         
-        # Colorbar
         cbar = plt.colorbar(sc, ax=ax, pad=0.1, shrink=0.8)
-        cbar.set_label('T_cold [°C]', fontsize=9)
+        cbar.set_label('RTE [%]', fontsize=9)
         
-        # Grid
         ax.grid(True, alpha=0.3)
-        
-        # View angle
         ax.view_init(elev=20, azim=45)
     
-    plt.suptitle('Round Trip Efficiency - 4D Sensitivity Analysis', 
-                 fontsize=14, fontweight='bold', y=0.98)
+    plt.suptitle('Round Trip Efficiency - Sensitivity Analysis (T_hot × T_amb × T_source)',
+                 fontsize=13, fontweight='bold', y=0.98)
     
     plt.tight_layout()
     if config.SAVE_PLOTS:
@@ -610,14 +587,16 @@ if __name__ == "__main__":
     print("\n" + "#"*70)
     print(f"#{'ANALYSIS COMPLETE':^68}#")
     print("#"*70)
+    valid = df_results[df_results['RTE'] > 0]
     print(f"\nKey findings:")
-    print(f"  Total valid points    : {len(df_results)}")
-    print(f"  RTE range             : {df_results['RTE'].min()*100:.2f}% to {df_results['RTE'].max()*100:.2f}%")
-    print(f"  Mean RTE              : {df_results['RTE'].mean()*100:.2f}%")
+    print(f"  Total computed points : {len(df_results)}")
+    print(f"  Valid (RTE > 0) points: {len(valid)}")
+    print(f"  RTE range             : {valid['RTE'].min()*100:.2f}% to {valid['RTE'].max()*100:.2f}%")
+    print(f"  Mean RTE (valid)      : {valid['RTE'].mean()*100:.2f}%")
     print(f"  Best operating point  :")
-    best_idx = df_results['RTE'].idxmax()
-    best_row = df_results.loc[best_idx]
-    print(f"    T_hot={best_row['T_hot']:.0f}°C, T_cold={best_row['T_cold']:.0f}°C, "
-          f"T_amb={best_row['T_amb']:.0f}°C, T_source={best_row['T_source']:.0f}°C")
+    best_idx = valid['RTE'].idxmax()
+    best_row = valid.loc[best_idx]
+    print(f"    T_hot={best_row['T_hot']:.0f}°C, T_amb={best_row['T_amb']:.0f}°C, "
+          f"T_source={best_row['T_source']:.0f}°C")
     print(f"    RTE = {best_row['RTE']*100:.2f}%")
     print(f"\n" + "#"*70 + "\n")
