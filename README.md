@@ -72,3 +72,35 @@ For real-world PTES design: prioritize **low T_hot** (reduces storage cost and H
 - `carnot_battery.py` — simulation and full factorial sweep
 - `requirements.txt` — dependencies (CoolProp, pandas, matplotlib, tqdm)
 - `README.md` — this file
+
+## Polynomial regression analysis (T_source=60°C, T_amb=25°C)
+
+This repository includes a polynomial regression analysis performed on the
+simulation outputs for the interval `T_hot ∈ [90, 140] °C`.
+
+- Analysis script: `polynomial_analysis.py` produced the figure
+	`polynomial_analysis.png`.
+- Purpose: fit smooth polynomials to the intensive results and compute
+	analytically the derivative d(RTE)/d(T_hot) from the polynomial product.
+
+Figure (saved in the repo):
+
+![Polynomial analysis of COP, η_ORC, RTE and dRTE/dT_hot](polynomial_analysis.png)
+
+Fitted polynomial (x = T_hot − 115 °C):
+
+COP_HP(x) = -2.009e-05 x^3 + 1.056e-03 x^2 - 6.847e-02 x + 3.22
+
+η_ORC(x) =  8.356e-09 x^3 - 6.153e-06 x^2 + 7.504e-04 x + 0.1196
+
+RTE(x) = COP_HP(x) × η_ORC(x)
+
+En dérivant analytiquement le produit, le script montre que :
+
+d(RTE)/d(T_hot) < 0 pour tout `T_hot ∈ [90, 140] °C` (valeurs numériques trouvées
+entre −0.0091 et −0.0051 1/°C sur cet intervalle).
+
+Interprétation synthétique : l'augmentation de `T_hot` dégrade significativement
+le COP de la pompe à chaleur (augmentation du taux de compression), alors que
+le gain en efficacité de l'ORC est faible — le produit donc décroît.
+
